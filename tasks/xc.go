@@ -33,6 +33,7 @@ import (
 	"github.com/laher/goxc/executils"
 	"github.com/laher/goxc/exefileparse"
 	"github.com/laher/goxc/platforms"
+	"github.com/laher/goxc/typeutils"
 )
 
 //runs automatically
@@ -48,7 +49,9 @@ func init() {
 			//"validation" : "tcBinExists,exeParse",
 			"validateToolchain":    false,
 			"verifyExe":            false,
-			"autoRebuildToolchain": false}})
+			"autoRebuildToolchain": false,
+			"postCompileCommand":   map[string]interface{}{},
+		}})
 }
 
 func setupXc(tp TaskParams) ([]platforms.Platform, error) {
@@ -260,5 +263,25 @@ func xcPlat(dest platforms.Platform, tp TaskParams, exeName string, packagePath 
 		}
 	}
 	err = executils.InvokeGo(packagePath, "build", args, envExtra, tp.Settings)
+	postCmd := tp.Settings.GetTaskSettingMap(TASK_XC, "postCompileCommand")
+	if err != nil {
+		return absoluteBin, err
+	}
+	for cmd, args := range postCmd {
+		typedArgs, err := typeutils.ToStringSlice(args, TASK_XC)
+		if err != nil {
+			return absoluteBin, err
+		}
+		cmd := exec.Command(cmd, typedArgs...)
+		log.Printf("Running post build command: %s", strings.Join(cmd.Args, " "))
+		output, err := cmd.CombinedOutput()
+		if tp.Settings.IsVerbose() {
+			log.Println(strings.TrimRight(string(output), "\r\n"))
+		}
+		if err != nil {
+			return absoluteBin, err
+		}
+	}
+	log.Printf("finished building %s for platform %v.", exeName, dest)
 	return absoluteBin, err
 }
